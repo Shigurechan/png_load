@@ -6,6 +6,12 @@
 #include <iterator>
 #include "opencv2/opencv.hpp"
 
+
+
+unsigned char* gPictureData = nullptr;	//画像データ
+int gPictureDataSize = 0;				//画像データサイズ
+
+
 // ###################### ファイルを全部表示  ###################### 
 void AllBinaryPrint(const char* fileName)
 {
@@ -167,13 +173,47 @@ int convInt(unsigned char* header, int start)
 	return ret;
 }
 
+// ###################### バイナリコピー  ###################### 
+
+//データ書き込み
+void bincat(char* s1, size_t s1_size, size_t s1_max_size, const char* s2, size_t s2_size)
+{
+	for (int i = 0; i < s2_size; i++)
+	{
+		if ((s1_size + i) > s1_max_size)
+		{
+			break;
+		}
+		else
+		{
+			s1[s1_size + i] = s2[i];
+		}
+	}	
+}
+
+//バイナリ追加
+void AddPictureData(const unsigned char* data, int data_size)
+{
+	int size = gPictureDataSize + data_size;    //最大サイズ
+	unsigned char* str = new unsigned char[size] {0x00};
+
+	bincat((char*)str, 0, size, (char*)gPictureData, gPictureDataSize);
+	bincat((char*)str, gPictureDataSize, size, (char*)data, data_size);
+
+
+	gPictureDataSize = size;					//実データサイズ数を更新
+	delete gPictureData;
+	gPictureData = str;
+}
+
+
 
 
 // ###################### IDAT チャンクを表示  ###################### 
 /*
 * データのバイナリをコピーして表示
 */
-void ImagePrint(const char* fileName, int pos,char* copy,int copySize)
+void ImagePrint(const char* fileName, int pos)
 {
 	std::fstream fs(fileName, std::ios_base::binary | std::ios_base::in);
 
@@ -186,41 +226,30 @@ void ImagePrint(const char* fileName, int pos,char* copy,int copySize)
 		//std::cout << "ファイルを開きました。" << std::endl;
 
 		size_t fileSize = fs.seekg(0, fs.end).tellg();	//ファイルサイズ
-		printf("fileSize: %zd\n",fileSize);
+		//printf("fileSize: %zd\n",fileSize);
 		fs.seekg(0, fs.beg);	//シーク位置を初期に戻す
 		unsigned char* fileData = new unsigned char[fileSize];	//ファイルデータ	
 		fs.read((char*)fileData, fileSize);	//バイナリ読み込み
 
-		/////////////////////////////////////////////////////////////////////////////
-		//BytePrint("texture.png",pos - 8, pos - 4);
-
-		int dataSize = convInt(fileData, pos - 8);
-	
-
-		printf("dataSize: %d\n",dataSize);
 		
-		int a = 0;
-		for (int i = pos; i < dataSize; i++)
+		int dataSize = convInt(fileData, pos - 8);//バイナリサイズを取得
+		unsigned char* data = new unsigned char[dataSize];
+
+		for (int i = 0; i < dataSize; i++)
 		{
-			std::cout<< (unsigned int)fileData[i]<<" ";
-
-			a++;
-			if (a == 20)
-			{
-				printf("\n");
-				a = 0;
-			}
+			data[i] = fileData[i];
 		}
+
+
+		AddPictureData(data, dataSize);	//バイナリデータを追加
 		
 
-		////////////////////////////////////////////////////////////////////////////
 
+		
+		delete data;
+		data = nullptr;
 
-
-
-
-
-		fs.seekg(0, fs.beg);	//シーク位置を初期に戻す
+		//fs.seekg(0, fs.beg);	//シーク位置を初期に戻す
 		delete fileData;	//メモリ開放
 
 	}
@@ -286,8 +315,16 @@ int main()
 	/* ############### IDATA ############### */
 	std::cout<<"############### IDATA ###############"<<std::endl;
 
-	int pos[1000];
-	ImageDataChunk("texture.png",pos,100);
+
+	int searchCount = 1000;
+	int* pos = new int[searchCount];
+	for (int i = 0; i < searchCount; i++)
+	{
+		pos[i] = 0;
+	}
+
+
+	ImageDataChunk("texture.png",pos, searchCount);
 
 	std::cout << "チャンクデータサイズ:　";
 	BytePrint("texture.png", 54, 58);
@@ -299,8 +336,22 @@ int main()
 	std::cout << std::endl;
 	std::cout << std::endl;
 	std::cout << std::endl;
+	
+	for (int i = 0; i < searchCount; i++)
+	{
+		if (pos[i] != 0) 
+		{
+			ImagePrint("texture.png", pos[i]);
+		}
+		else
+		{
+			break;
+		}
 
-	ImagePrint("texture.png", pos[0]);
+	}
+
+	printf("実画像データサイズ: %d\n",gPictureDataSize);
+	
 
 
 
@@ -308,6 +359,10 @@ int main()
 
 
 
+	
+
+	delete[] pos;
+	pos = nullptr;
 
 	return 0;
 }
